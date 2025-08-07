@@ -1,6 +1,6 @@
 # EventMate - Event Management Platform
 
-A full-stack event management application with role-based authentication, built with React, Node.js, Express, and MongoDB.
+EventMate is a full-stack event management application designed to simplify how users discover and register for events, while enabling admins to manage them effectively. It features secure, role-based authentication and is built using the **MERN** (MongoDB, Express, React, Node.js) stack.
 
 ## Features
 
@@ -15,6 +15,7 @@ A full-stack event management application with role-based authentication, built 
 - ✅ Create, read, update, delete events (Admin only)
 - ✅ View events list (All users)
 - ✅ Event registration/unregistration
+- ✅ PDF Tickets with QR Codes 
 - ✅ Event filtering and search
 - ✅ Featured events
 
