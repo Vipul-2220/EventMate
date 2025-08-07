@@ -103,4 +103,20 @@ router.delete('/:id', adminAuth, async (req, res) => {
     }
 });
 
+// @route   GET /api/users/me/registered-events
+// @desc    Get events the current user is registered for
+// @access  Private
+router.get('/me/registered-events', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).populate('registeredEvents', 'title date location');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json({ events: user.registeredEvents });
+    } catch (error) {
+        console.error('Get registered events error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 module.exports = router;

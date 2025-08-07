@@ -41,6 +41,9 @@ import {
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import api from '../utils/api';
+import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 
 const MotionCard = motion(Card);
 
@@ -59,6 +62,8 @@ const EventList = () => {
   const [sortOrder, setSortOrder] = useState('asc');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
+  const [registering, setRegistering] = useState(false);
+  const [registeredEvents, setRegisteredEvents] = useState([]);
 
   const fetchEvents = async () => {
     try {
@@ -87,6 +92,23 @@ const EventList = () => {
   useEffect(() => {
     fetchEvents();
   }, [page, searchTerm, categoryFilter, sortBy, sortOrder]);
+
+  useEffect(() => {
+    // Fetch user's registered events after login or when events change
+    const fetchRegisteredEvents = async () => {
+      if (isAuthenticated && user) {
+        try {
+          const res = await api.get('/users/me/registered-events');
+          setRegisteredEvents(res.data.events.map(e => e._id));
+        } catch (err) {
+          setRegisteredEvents([]);
+        }
+      } else {
+        setRegisteredEvents([]);
+      }
+    };
+    fetchRegisteredEvents();
+  }, [isAuthenticated, user, events]); // also run when events change
 
   const handleDeleteEvent = async () => {
     try {
@@ -127,6 +149,49 @@ const EventList = () => {
 
   const canManageEvent = (event) => {
     return user?.role === 'admin' || event.organizer?._id === user?._id;
+  };
+
+  const handleRegister = async (eventId, isRegistered) => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    setRegistering(true);
+    try {
+      if (isRegistered) {
+        await api.delete(`/events/${eventId}/register`);
+        setRegisteredEvents(registeredEvents.filter(id => id !== eventId));
+      } else {
+        await api.post(`/events/${eventId}/register`);
+        setRegisteredEvents([...registeredEvents, eventId]);
+      }
+      fetchEvents();
+    } catch (err) {
+      setError('Failed to update registration');
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const generateETicket = async (event, user) => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('E-Ticket', 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`Event: ${event.title}`, 20, 40);
+    doc.text(`Date: ${new Date(event.date).toLocaleString()}`, 20, 50);
+    doc.text(`Location: ${typeof event.location === 'object' && event.location !== null ? `${event.location.address || ''}, ${event.location.city || ''}, ${event.location.state || ''} ${event.location.zipCode || ''}`.replace(/^, |, , |, $| $/g, '').trim() : event.location || ''}`, 20, 60);
+    doc.text(`Name: ${user.name}`, 20, 70);
+    doc.text(`Email: ${user.email}`, 20, 80);
+    doc.text(`Ticket ID: ${user._id}-${event._id}`, 20, 90);
+    doc.text('Show this ticket at the event entrance.', 20, 110);
+    const qrData = JSON.stringify({
+      user: { name: user.name, email: user.email, id: user._id },
+      event: { title: event.title, id: event._id, date: event.date }
+    });
+    const qrUrl = await QRCode.toDataURL(qrData);
+    doc.addImage(qrUrl, 'PNG', 140, 40, 50, 50);
+    return doc;
   };
 
   if (loading) {
@@ -241,141 +306,169 @@ const EventList = () => {
           </Box>
         ) : (
           <Grid container spacing={3}>
-            {events.map((event, index) => (
-              <Grid item xs={12} sm={6} md={4} key={event._id}>
-                <MotionCard
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.1 }}
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: 'pointer',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: '0 8px 25px rgba(0, 0, 0, 0.15)',
-                      transition: 'all 0.3s ease'
-                    }
-                  }}
-                  onClick={() => navigate(`/events/${event._id}`)}
-                >
-                  <Box
+            {events.map((event, index) => {
+              const isRegistered = registeredEvents.map(String).includes(String(event._id));
+              return (
+                <Grid item xs={12} sm={6} md={4} key={event._id}>
+                  <MotionCard
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
                     sx={{
-                      height: 200,
-                      background: `linear-gradient(135deg, ${event.featured ? '#1976d2' : '#f5f5f5'}, ${event.featured ? '#42a5f5' : '#e0e0e0'})`,
+                      height: '100%',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      position: 'relative'
+                      flexDirection: 'column',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: '0 8px 25px rgba(0, 0, 0, 0.15)',
+                        transition: 'all 0.3s ease'
+                      }
                     }}
+                    onClick={() => navigate(`/events/${event._id}`)}
                   >
-                    <EventIcon sx={{ fontSize: 64, color: event.featured ? 'white' : 'text.secondary' }} />
-                    {event.featured && (
+                    <Box
+                      sx={{
+                        height: 200,
+                        background: `linear-gradient(135deg, ${event.featured ? '#1976d2' : '#f5f5f5'}, ${event.featured ? '#42a5f5' : '#e0e0e0'})`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        position: 'relative'
+                      }}
+                    >
+                      <EventIcon sx={{ fontSize: 64, color: event.featured ? 'white' : 'text.secondary' }} />
+                      {event.featured && (
+                        <Chip
+                          label="Featured"
+                          color="secondary"
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8
+                          }}
+                        />
+                      )}
                       <Chip
-                        label="Featured"
-                        color="secondary"
+                        label={event.status}
+                        color={getStatusColor(event.status)}
                         size="small"
                         sx={{
                           position: 'absolute',
                           top: 8,
-                          right: 8
+                          left: 8
                         }}
                       />
-                    )}
-                    <Chip
-                      label={event.status}
-                      color={getStatusColor(event.status)}
-                      size="small"
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        left: 8
-                      }}
-                    />
-                  </Box>
-
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography variant="h6" component="h2" gutterBottom noWrap>
-                      {event.title || ''}
-                    </Typography>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <ScheduleIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="body2" color="text.secondary">
-                        {formatDate(event.date) || ''}
-                      </Typography>
                     </Box>
 
-                    {event.location && (
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Typography variant="h6" component="h2" gutterBottom noWrap>
+                        {event.title || ''}
+                      </Typography>
+                      
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <LocationIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
-                        <Typography variant="body2" color="text.secondary" noWrap>
-                          {typeof event.location === 'object' && event.location !== null
-                            ? `${event.location.address || ''}, ${event.location.city || ''}, ${event.location.state || ''} ${event.location.zipCode || ''}`.replace(/^, |, , |, $| $/g, '').trim()
-                            : event.location || ''}
+                        <ScheduleIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {formatDate(event.date) || ''}
                         </Typography>
                       </Box>
-                    )}
 
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PersonIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="body2" color="text.secondary">
-                        {event.organizer?.name || 'Unknown Organizer'}
-                      </Typography>
-                    </Box>
+                      {event.location && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <LocationIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            {typeof event.location === 'object' && event.location !== null
+                              ? `${event.location.address || ''}, ${event.location.city || ''}, ${event.location.state || ''} ${event.location.zipCode || ''}`.replace(/^, |, , |, $| $/g, '').trim()
+                              : event.location || ''}
+                          </Typography>
+                        </Box>
+                      )}
 
-                    <Typography variant="body2" color="text.secondary" sx={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical'
-                    }}>
-                      {event.description || ''}
-                    </Typography>
-
-                    {event.category && (
-                      <Chip
-                        label={event.category}
-                        size="small"
-                        sx={{ mt: 1 }}
-                      />
-                    )}
-                  </CardContent>
-
-                  <CardActions sx={{ justifyContent: 'space-between', p: 2 }}>
-                    <Button size="small" color="primary">
-                      View Details
-                    </Button>
-                    
-                    {canManageEvent(event) && (
-                      <Box>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/events/${event._id}/edit`);
-                          }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openDeleteDialog(event);
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <PersonIcon sx={{ fontSize: 16, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {event.organizer?.name || 'Unknown Organizer'}
+                        </Typography>
                       </Box>
-                    )}
-                  </CardActions>
-                </MotionCard>
-              </Grid>
-            ))}
+
+                      <Typography variant="body2" color="text.secondary" sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical'
+                      }}>
+                        {event.description || ''}
+                      </Typography>
+
+                      {event.category && (
+                        <Chip
+                          label={event.category}
+                          size="small"
+                          sx={{ mt: 1 }}
+                        />
+                      )}
+                    </CardContent>
+
+                    <CardActions sx={{ justifyContent: 'space-between', p: 2 }}>
+                      <Button size="small" color="primary" onClick={() => navigate(`/events/${event._id}`)}>
+                        View Details
+                      </Button>
+                      {isAuthenticated && (
+                        <Button
+                          size="small"
+                          color={isRegistered ? 'secondary' : 'success'}
+                          disabled={registering}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleRegister(event._id, isRegistered);
+                          }}
+                        >
+                          {isRegistered ? 'Unregister' : 'Register'}
+                        </Button>
+                      )}
+                      {isRegistered && (
+                        <Button
+                          size="small"
+                          color="success"
+                          onClick={async e => {
+                            e.stopPropagation();
+                            const doc = await generateETicket(event, user);
+                            doc.save(`e-ticket-${event._id}.pdf`);
+                          }}
+                        >
+                          Download E-Ticket
+                        </Button>
+                      )}
+                      {canManageEvent(event) && (
+                        <Box>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/events/${event._id}/edit`);
+                            }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDeleteDialog(event);
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Box>
+                      )}
+                    </CardActions>
+                  </MotionCard>
+                </Grid>
+              );
+            })}
           </Grid>
         )}
 

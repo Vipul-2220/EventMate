@@ -181,20 +181,24 @@ router.post('/:id/register', auth, async (req, res) => {
         const event = await Event.findById(req.params.id);
 
         if (!event) {
+            console.error('Event not found:', req.params.id);
             return res.status(404).json({ message: 'Event not found' });
         }
 
         if (event.status !== 'published') {
-            return res.status(400).json({ message: 'Event is not available for registration' });
+            console.error('Event not published:', event.status);
+            return res.status(400).json({ message: 'Event is not available for registration', reason: 'status', status: event.status });
         }
 
         if (event.isFull) {
-            return res.status(400).json({ message: 'Event is full' });
+            console.error('Event is full:', event.capacity, event.registeredUsers.length);
+            return res.status(400).json({ message: 'Event is full', reason: 'full', capacity: event.capacity, registered: event.registeredUsers.length });
         }
 
         // Check if user is already registered
         if (event.registeredUsers.includes(req.user._id)) {
-            return res.status(400).json({ message: 'Already registered for this event' });
+            console.error('User already registered:', req.user._id);
+            return res.status(400).json({ message: 'Already registered for this event', reason: 'already_registered' });
         }
 
         // Add user to event registrations
@@ -213,7 +217,7 @@ router.post('/:id/register', auth, async (req, res) => {
         });
     } catch (error) {
         console.error('Register for event error:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 });
 

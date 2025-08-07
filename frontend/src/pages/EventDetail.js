@@ -57,9 +57,10 @@ const EventDetail = () => {
   console.log(user);
   useEffect(() => {
     fetchEvent();
-  }, [id]);
-  
+  }, [id]); // Only fetch on id change
+
   useEffect(() => {
+    // When user or authentication changes, re-check registration status
     if (event && user && isAuthenticated) {
       setIsRegistered(event.registeredUsers?.some(
         u => u._id === user._id || u === user._id
@@ -71,15 +72,8 @@ const EventDetail = () => {
 
   useEffect(() => {
     if (isRegistered && event && user) {
-      setCheckingTicket(true);
-      const tickets = JSON.parse(localStorage.getItem('etickets') || '{}');
-      if (tickets[event._id]) {
-        setTicketUrl(tickets[event._id]);
-        setCheckingTicket(false);
-      } else {
-        // Generate ticket on the fly if not in localStorage
-        generateETicket().then(() => setCheckingTicket(false));
-      }
+      setCheckingTicket(false);
+      setTicketUrl('ready'); // just a flag
     } else {
       setTicketUrl(null);
     }
@@ -92,8 +86,6 @@ const EventDetail = () => {
       const response = await api.get(`/events/${id}`);
       setEvent(response.data);
       // Check if user is registered for this event
-      console.log(isAuthenticated);
-      console.log(user);
       if (isAuthenticated && user) {
         setIsRegistered(response.data.registeredUsers?.some(
           u => u._id === user._id || u === user._id
@@ -104,6 +96,8 @@ const EventDetail = () => {
     } catch (err) {
       if (err.response && err.response.status === 401) {
         setError('You must be logged in to view this event.');
+      } else if (err.response && err.response.status === 404) {
+        setError('Event Not Found');
       } else {
         setError('Failed to fetch event details');
       }
@@ -135,11 +129,10 @@ const EventDetail = () => {
         generateETicket();
         setSuccessMessage('You have been successfully registered for this event!');
       }
-      await fetchEvent();
+      await fetchEvent(); // always refetch event after register/unregister
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to register for event');
       setSuccessMessage('');
-      console.error('Error registering for event:', err);
     } finally {
       setRegistering(false);
       setConfirmDialogOpen(false);
@@ -159,22 +152,13 @@ const EventDetail = () => {
     doc.text(`Email: ${user.email}`, 20, 80);
     doc.text(`Ticket ID: ${user._id}-${event._id}`, 20, 90);
     doc.text('Show this ticket at the event entrance.', 20, 110);
-
-    // QR Code data
     const qrData = JSON.stringify({
       user: { name: user.name, email: user.email, id: user._id },
       event: { title: event.title, id: event._id, date: event.date }
     });
     const qrUrl = await QRCode.toDataURL(qrData);
     doc.addImage(qrUrl, 'PNG', 140, 40, 50, 50);
-
-    const pdfBlob = doc.output('blob');
-    const url = URL.createObjectURL(pdfBlob);
-    setTicketUrl(url);
-    // Store in localStorage for profile page access
-    let tickets = JSON.parse(localStorage.getItem('etickets') || '{}');
-    tickets[event._id] = url;
-    localStorage.setItem('etickets', JSON.stringify(tickets));
+    return doc;
   };
 
   const formatDate = (dateString) => {
@@ -361,7 +345,10 @@ const EventDetail = () => {
                         variant="contained"
                         color="success"
                         sx={{ ml: 2 }}
-                        onClick={() => window.open(ticketUrl, '_blank')}
+                        onClick={async () => {
+                          const doc = await generateETicket();
+                          doc.save(`e-ticket-${event._id}.pdf`);
+                        }}
                       >
                         Download E-Ticket
                       </Button>

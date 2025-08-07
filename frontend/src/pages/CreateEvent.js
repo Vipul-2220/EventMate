@@ -33,7 +33,7 @@ import {
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import api from '../utils/api';
 
 const MotionPaper = motion(Paper);
 
@@ -53,11 +53,14 @@ const CreateEvent = () => {
     description: '',
     date: '',
     time: '',
-    location: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
     category: '',
-    maxAttendees: '',
+    capacity: '',
     featured: false,
-    status: 'draft'
+    status: 'published' // default to published
   });
 
   // Check if user is admin
@@ -110,12 +113,16 @@ const CreateEvent = () => {
       const eventData = {
         ...formData,
         date: dateTime.toISOString(),
-        maxAttendees: parseInt(formData.maxAttendees) || null
+        capacity: parseInt(formData.capacity) || 1,
+        location: {
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          zipCode: formData.zipCode
+        }
       };
 
-      delete eventData.time; // Remove time as it's now combined with date
-
-      const response = await axios.post('/api/events', eventData);
+      const response = await api.post('/events', eventData); // use api instance for auth
       
       setSuccess(true);
       setTimeout(() => {
@@ -134,7 +141,7 @@ const CreateEvent = () => {
       case 0:
         return formData.title && formData.description && formData.date && formData.time;
       case 1:
-        return formData.location && formData.category;
+        return formData.address && formData.city && formData.state && formData.zipCode && formData.category;
       case 2:
         return true;
       default:
@@ -205,15 +212,48 @@ const CreateEvent = () => {
       case 1:
         return (
           <Grid container spacing={3}>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Location"
-                name="location"
-                value={formData.location}
+                label="Address"
+                name="address"
+                value={formData.address}
                 onChange={handleInputChange}
                 required
-                placeholder="Enter event location"
+                placeholder="Enter event address"
+              />
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <TextField
+                fullWidth
+                label="City"
+                name="city"
+                value={formData.city}
+                onChange={handleInputChange}
+                required
+                placeholder="City"
+              />
+            </Grid>
+            <Grid item xs={12} sm={2}>
+              <TextField
+                fullWidth
+                label="State"
+                name="state"
+                value={formData.state}
+                onChange={handleInputChange}
+                required
+                placeholder="State"
+              />
+            </Grid>
+            <Grid item xs={12} sm={1}>
+              <TextField
+                fullWidth
+                label="Zip Code"
+                name="zipCode"
+                value={formData.zipCode}
+                onChange={handleInputChange}
+                required
+                placeholder="Zip"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -225,25 +265,26 @@ const CreateEvent = () => {
                   label="Category"
                   onChange={handleInputChange}
                 >
-                  <MenuItem value="conference">Conference</MenuItem>
-                  <MenuItem value="workshop">Workshop</MenuItem>
-                  <MenuItem value="seminar">Seminar</MenuItem>
-                  <MenuItem value="meetup">Meetup</MenuItem>
-                  <MenuItem value="concert">Concert</MenuItem>
-                  <MenuItem value="sports">Sports</MenuItem>
-                  <MenuItem value="other">Other</MenuItem>
+                  <MenuItem value="Technology">Technology</MenuItem>
+                  <MenuItem value="Business">Business</MenuItem>
+                  <MenuItem value="Education">Education</MenuItem>
+                  <MenuItem value="Entertainment">Entertainment</MenuItem>
+                  <MenuItem value="Sports">Sports</MenuItem>
+                  <MenuItem value="Health">Health</MenuItem>
+                  <MenuItem value="Other">Other</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Maximum Attendees"
-                name="maxAttendees"
+                label="Capacity"
+                name="capacity"
                 type="number"
-                value={formData.maxAttendees}
+                value={formData.capacity}
                 onChange={handleInputChange}
-                placeholder="Leave empty for unlimited"
+                required
+                placeholder="Enter event capacity"
               />
             </Grid>
             <Grid item xs={12}>
@@ -292,7 +333,7 @@ const CreateEvent = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                       <LocationIcon sx={{ mr: 1, color: 'text.secondary' }} />
                       <Typography variant="body2">
-                        {formData.location}
+                        {formData.address}, {formData.city}, {formData.state} {formData.zipCode}
                       </Typography>
                     </Box>
                   </Grid>
@@ -304,10 +345,10 @@ const CreateEvent = () => {
                       </Typography>
                     </Box>
                   </Grid>
-                  {formData.maxAttendees && (
+                  {formData.capacity && (
                     <Grid item xs={12} sm={6}>
                       <Typography variant="body2">
-                        Max Attendees: {formData.maxAttendees}
+                        Capacity: {formData.capacity}
                       </Typography>
                     </Grid>
                   )}
